@@ -3,6 +3,7 @@ import numpy as np
 import pointer_net 
 import time
 import os
+import sys
 
 tf.app.flags.DEFINE_integer("batch_size", 128,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 5, "Maximum input sequence length.")

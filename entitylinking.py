@@ -7,8 +7,8 @@ import sys
 import json
 
 tf.app.flags.DEFINE_integer("batch_size", 128,"Batch size.")
-tf.app.flags.DEFINE_integer("max_input_sequence_len", 5, "Maximum input sequence length.")
-tf.app.flags.DEFINE_integer("max_output_sequence_len", 7, "Maximum output sequence length.")
+tf.app.flags.DEFINE_integer("max_input_sequence_len", 200, "Maximum input sequence length.")
+tf.app.flags.DEFINE_integer("max_output_sequence_len", 10, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
 tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
@@ -16,7 +16,7 @@ tf.app.flags.DEFINE_integer("beam_width", 2, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Maximum gradient norm.")
 tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
-tf.app.flags.DEFINE_string("log_dir", "./log", "Log directory")
+#tf.app.flags.DEFINE_string("log_dir", "./log", "Log directory")
 tf.app.flags.DEFINE_string("data_path", "./data/pointercandidatevectorstest1.json", "Data path.")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "frequence to do per checkpoint.")
 
@@ -38,53 +38,44 @@ class EntityLinker(object):
     enc_input_weights = []
     outputs = []
     dec_input_weights = []
-      
+    maxlen = 0
     for question in d: 
       questioninputs = []
       questionoutputs = []
       for idx,word in enumerate(question):
-          questioninputs.append(word[0])
-          if word[2] == 1.0:
-              questionoutputs.append(idx+1)
+        questioninputs.append(word[0])
+        if word[2] == 1.0:
+          questionoutputs.append(idx+1)
+      #inputs.append(questioninputs)
+      enc_input_len = len(question) 
+      for i in range(FLAGS.max_input_sequence_len-enc_input_len):
+        questioninputs.append([0]*801)
+      weight = np.zeros(FLAGS.max_input_sequence_len)
+      weight[:enc_input_len]=1
+      enc_input_weights.append(weight)
       inputs.append(questioninputs)
-      outputs.append(questionoutputs)
-#      outputs.append(item[])
-#      inp, outp = rec[:-2].split(' output ')
-#      inp = inp.split(' ')
-#      outp = outp.split(' ')
-#
-#      enc_input = []
-#      for t in inp:
-#        enc_input.append(float(t))
-#      enc_input_len = len(enc_input)//2   
-#      enc_input += [0]*((FLAGS.max_input_sequence_len-enc_input_len)*2) 
-#      enc_input = np.array(enc_input).reshape([-1,2])
-#      inputs.append(enc_input)
-#      weight = np.zeros(FLAGS.max_input_sequence_len)
-#      weight[:enc_input_len]=1
-#      enc_input_weights.append(weight)
-#   
-#      output=[pointer_net.START_ID]
-#      for i in outp:
-#        # Add 2 to value due to the sepcial tokens
-#        output.append(int(i)+2)
-#      output.append(pointer_net.END_ID)
-#      dec_input_len = len(output)-1
-#      output += [pointer_net.PAD_ID]*(FLAGS.max_output_sequence_len-dec_input_len)
-#      output = np.array(output)
-#      outputs.append(output)
-#      weight = np.zeros(FLAGS.max_output_sequence_len)
-#      weight[:dec_input_len]=1
-#      dec_input_weights.append(weight)
-#        
-#    self.inputs = np.stack(inputs)
-#    self.enc_input_weights = np.stack(enc_input_weights)
-#    self.outputs = np.stack(outputs)
-#    self.dec_input_weights = np.stack(dec_input_weights)
-#    print("Load inputs:            " +str(self.inputs.shape))
-#    print("Load enc_input_weights: " +str(self.enc_input_weights.shape))
-#    print("Load outputs:           " +str(self.outputs.shape))
-#    print("Load dec_input_weights: " +str(self.dec_input_weights.shape))
+   
+      output=[pointer_net.START_ID]
+      for i in questionoutputs:
+        # Add 2 to value due to the sepcial tokens
+        output.append(int(i)+2)
+      output.append(pointer_net.END_ID)
+      dec_input_len = len(output)-1
+      output += [pointer_net.PAD_ID]*(FLAGS.max_output_sequence_len-dec_input_len)
+      output = np.array(output)
+      outputs.append(output)
+      weight = np.zeros(FLAGS.max_output_sequence_len)
+      weight[:dec_input_len]=1
+      dec_input_weights.append(weight)
+        
+    self.inputs = np.stack(inputs)
+    self.enc_input_weights = np.stack(enc_input_weights)
+    self.outputs = np.stack(outputs)
+    self.dec_input_weights = np.stack(dec_input_weights)
+    print("Load inputs:            " +str(self.inputs.shape))
+    print("Load enc_input_weights: " +str(self.enc_input_weights.shape))
+    print("Load outputs:           " +str(self.outputs.shape))
+    print("Load dec_input_weights: " +str(self.dec_input_weights.shape))
 
 
   def get_batch(self):
@@ -107,7 +98,7 @@ class EntityLinker(object):
                     max_gradient_norm=FLAGS.max_gradient_norm, 
                     forward_only=self.forward_only)
       # Prepare Summary writer
-      self.writer = tf.summary.FileWriter(FLAGS.log_dir + '/train',self.sess.graph)
+      self.writer = tf.summary.FileWriter(FLAGS.log_dir + './train',self.sess.graph)
       # Try to get checkpoint
       #ckpt = tf.train.get_checkpoint_state(FLAGS.log_dir)
       #if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
