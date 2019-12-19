@@ -11,17 +11,18 @@ tf.app.flags.DEFINE_integer("max_input_sequence_len", 200, "Maximum input sequen
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 10, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
 tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
-tf.app.flags.DEFINE_integer("num_layers", 4, "Number of layers.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 2, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Maximum gradient norm.")
 tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
-tf.app.flags.DEFINE_string("log_dir", "./log", "Log directory")
+#tf.app.flags.DEFINE_string("log_dir", "./log", "Log directory")
 tf.app.flags.DEFINE_string("data_path", "./data/pointercandidatevectors1.json", "Training Data path.")
 tf.app.flags.DEFINE_string("test_data_path", "./data/pointercandidatevectorstest1.json", "Test Data path.")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "frequence to do per checkpoint.")
 
 FLAGS = tf.app.flags.FLAGS
+FLAGS.log_dir = "./log"
 
 class EntityLinker(object):
   def __init__(self, forward_only):
