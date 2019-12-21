@@ -73,7 +73,7 @@ class PointerNet(object):
     # Choose LSTM Cell
     cell = tf.contrib.rnn.LSTMCell
     # Create placeholders
-    self.inputs = tf.placeholder(tf.float32, shape=[self.batch_size,self.max_input_sequence_len,801], name="inputs")
+    self.inputs = tf.placeholder(tf.float32, shape=[self.batch_size,self.max_input_sequence_len,802], name="inputs")
     self.outputs = tf.placeholder(tf.int32, shape=[self.batch_size,self.max_output_sequence_len+1], name="outputs")
     self.enc_input_weights = tf.placeholder(tf.int32,shape=[self.batch_size,self.max_input_sequence_len], name="enc_input_weights")
     self.dec_input_weights = tf.placeholder(tf.int32,shape=[self.batch_size,self.max_output_sequence_len], name="dec_input_weights")
@@ -81,7 +81,7 @@ class PointerNet(object):
     enc_input_lens=tf.reduce_sum(self.enc_input_weights,axis=1)
     dec_input_lens=tf.reduce_sum(self.dec_input_weights,axis=1)
     # Special token embedding
-    special_token_embedding = tf.get_variable("special_token_embedding", [3,801], tf.float32, tf.contrib.layers.xavier_initializer())
+    special_token_embedding = tf.get_variable("special_token_embedding", [3,802], tf.float32, tf.contrib.layers.xavier_initializer())
     # Embedding_table
     # Shape: [batch_size,vocab_size,features_size]
     embedding_table = tf.concat([tf.tile(tf.expand_dims(special_token_embedding,0),[self.batch_size,1,1]), self.inputs],axis=1)   
@@ -215,7 +215,7 @@ class PointerNet(object):
     # Saver
     self.saver = tf.train.Saver(tf.global_variables())
 
-  def step(self, session, inputs, enc_input_weights, outputs=None, dec_input_weights=None):
+  def step(self, session, inputs, enc_input_weights, outputs=None, dec_input_weights=None, update=True):
     """Run a step of the model feeding the given inputs.
 
     Args:
@@ -246,14 +246,17 @@ class PointerNet(object):
 
     #Fill up outputs
     if self.forward_only:
-      output_feed = [self.predicted_ids]
+      output_feed = [self.loss, self.predicted_ids_with_logits]
     else:
       output_feed = [self.update, self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var]
+    if not update:
+      output_feed = [self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var]
 
     #Run step
     outputs = session.run(output_feed, input_feed)
 
-
+    if not update:
+      return outputs[0],outputs[1],outputs[2],outputs[3],outputs[4]
     #Return
     if self.forward_only:
       return outputs[0]
