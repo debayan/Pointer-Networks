@@ -6,9 +6,9 @@ import os
 import sys
 import json
 
-tf.app.flags.DEFINE_integer("batch_size", 128,"Batch size.")
-tf.app.flags.DEFINE_integer("max_input_sequence_len", 200, "Maximum input sequence length.")
-tf.app.flags.DEFINE_integer("max_output_sequence_len", 10, "Maximum output sequence length.")
+tf.app.flags.DEFINE_integer("batch_size", 100,"Batch size.")
+tf.app.flags.DEFINE_integer("max_input_sequence_len", 2000, "Maximum input sequence length.")
+tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
 tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
@@ -17,8 +17,8 @@ tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Maximum gradient norm.")
 tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
 #tf.app.flags.DEFINE_string("log_dir", "./log", "Log directory")
-tf.app.flags.DEFINE_string("data_path", "./data/pointercandidatevectors1.json", "Training Data path.")
-tf.app.flags.DEFINE_string("test_data_path", "./data/pointercandidatevectorstest1.json", "Test Data path.")
+tf.app.flags.DEFINE_string("data_path", "./pcstrain.json", "Training Data path.")
+tf.app.flags.DEFINE_string("test_data_path", "./pcstest.json", "Test Data path.")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "frequence to do per checkpoint.")
 
 FLAGS = tf.app.flags.FLAGS
@@ -36,41 +36,43 @@ class EntityLinker(object):
     
 
   def read_test_data(self): 
-    d = json.loads(open(FLAGS.test_data_path,'r').read())
     inputs = []
     enc_input_weights = []
     outputs = []
     dec_input_weights = []
     maxlen = 0
-    for question in d:
-      questioninputs = []
-      questionoutputs = []
-      for idx,word in enumerate(question):
-        questioninputs.append(word[0])
-        if word[2] == 1.0:
-          questionoutputs.append(idx+1)
+    with open(FLAGS.test_data_path,'r') as fp:
+      for line in fp:
+        line = line.strip()
+        question = json.loads(line)
+        questioninputs = []
+        questionoutputs = []
+        for idx,word in enumerate(question):
+          questioninputs.append(word[0])
+          if word[2] == 1.0:
+            questionoutputs.append(idx+1)
       #inputs.append(questioninputs)
-      enc_input_len = len(question) 
-      for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*801)
-      weight = np.zeros(FLAGS.max_input_sequence_len)
-      weight[:enc_input_len]=1
-      enc_input_weights.append(weight)
-      inputs.append(questioninputs)
+        enc_input_len = len(question)
+        for i in range(FLAGS.max_input_sequence_len-enc_input_len):
+          questioninputs.append([0]*802)
+        weight = np.zeros(FLAGS.max_input_sequence_len)
+        weight[:enc_input_len]=1
+        enc_input_weights.append(weight)
+        inputs.append(questioninputs)
 
-      output=[pointer_net.START_ID]
-      for i in questionoutputs:
-        # Add 2 to value due to the sepcial tokens
-        output.append(int(i)+2)
-      output.append(pointer_net.END_ID)
-      dec_input_len = len(output)-1
-      output += [pointer_net.PAD_ID]*(FLAGS.max_output_sequence_len-dec_input_len)
-      output = np.array(output)
-      outputs.append(output)
-      weight = np.zeros(FLAGS.max_output_sequence_len)
-      weight[:dec_input_len]=1
-      dec_input_weights.append(weight)
-        
+        output=[pointer_net.START_ID]
+        for i in questionoutputs:
+          # Add 2 to value due to the sepcial tokens
+          output.append(int(i)+2)
+        output.append(pointer_net.END_ID)
+        dec_input_len = len(output)-1
+        output += [pointer_net.PAD_ID]*(FLAGS.max_output_sequence_len-dec_input_len)
+        output = np.array(output)
+        outputs.append(output)
+        weight = np.zeros(FLAGS.max_output_sequence_len)
+        weight[:dec_input_len]=1
+        dec_input_weights.append(weight)
+
     self.test_inputs = np.stack(inputs)
     self.test_enc_input_weights = np.stack(enc_input_weights)
     self.test_outputs = np.stack(outputs)
@@ -80,41 +82,44 @@ class EntityLinker(object):
     print("Load test outputs:           " +str(self.test_outputs.shape))
     print("Load test dec_input_weights: " +str(self.test_dec_input_weights.shape))
 
+
   def read_data(self):
-    d = json.loads(open(FLAGS.data_path,'r').read())
     inputs = []
     enc_input_weights = []
     outputs = []
     dec_input_weights = []
     maxlen = 0
-    for question in d: 
-      questioninputs = []
-      questionoutputs = []
-      for idx,word in enumerate(question):
-        questioninputs.append(word[0])
-        if word[2] == 1.0:
-          questionoutputs.append(idx+1)
+    with open(FLAGS.data_path,'r') as fp:
+      for line in fp:
+        line = line.strip()
+        question = json.loads(line)
+        questioninputs = []
+        questionoutputs = []
+        for idx,word in enumerate(question):
+          questioninputs.append(word[0])
+          if word[2] == 1.0:
+            questionoutputs.append(idx+1)
       #inputs.append(questioninputs)
-      enc_input_len = len(question) 
-      for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*801)
-      weight = np.zeros(FLAGS.max_input_sequence_len)
-      weight[:enc_input_len]=1
-      enc_input_weights.append(weight)
-      inputs.append(questioninputs)
+        enc_input_len = len(question) 
+        for i in range(FLAGS.max_input_sequence_len-enc_input_len):
+          questioninputs.append([0]*802)
+        weight = np.zeros(FLAGS.max_input_sequence_len)
+        weight[:enc_input_len]=1
+        enc_input_weights.append(weight)
+        inputs.append(questioninputs)
    
-      output=[pointer_net.START_ID]
-      for i in questionoutputs:
+        output=[pointer_net.START_ID]
+        for i in questionoutputs:
         # Add 2 to value due to the sepcial tokens
-        output.append(int(i)+2)
-      output.append(pointer_net.END_ID)
-      dec_input_len = len(output)-1
-      output += [pointer_net.PAD_ID]*(FLAGS.max_output_sequence_len-dec_input_len)
-      output = np.array(output)
-      outputs.append(output)
-      weight = np.zeros(FLAGS.max_output_sequence_len)
-      weight[:dec_input_len]=1
-      dec_input_weights.append(weight)
+          output.append(int(i)+2)
+        output.append(pointer_net.END_ID)
+        dec_input_len = len(output)-1
+        output += [pointer_net.PAD_ID]*(FLAGS.max_output_sequence_len-dec_input_len)
+        output = np.array(output)
+        outputs.append(output)
+        weight = np.zeros(FLAGS.max_output_sequence_len)
+        weight[:dec_input_len]=1
+        dec_input_weights.append(weight)
         
     self.inputs = np.stack(inputs)
     self.enc_input_weights = np.stack(enc_input_weights)

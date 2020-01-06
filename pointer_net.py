@@ -247,24 +247,18 @@ class PointerNet(object):
     #Fill up outputs
     output_feed = []
     if self.forward_only and not update:
-      print('1')
       output_feed = [self.predicted_ids]
     if not self.forward_only and update:
-      print('b')
       output_feed = [self.update, self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var]
     if not update and not self.forward_only:
-      print('c')
       output_feed = [self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var]
 
     #Run step
     outputs = session.run(output_feed, input_feed)
 
     if  update and not self.forward_only:
-      print('d')
       return outputs[1],outputs[2],outputs[3],outputs[4],outputs[5]
     if self.forward_only and not update:
-      print('e')
       return outputs[0]
     if not update and not self.forward_only:
-      print('f')
       return outputs[0],outputs[1],outputs[2],outputs[3],outputs[4]

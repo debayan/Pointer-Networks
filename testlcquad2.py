@@ -10,7 +10,7 @@ tf.app.flags.DEFINE_integer("batch_size", 1,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 1000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
-tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
+tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -21,7 +21,8 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "frequence to do per ch
 
 FLAGS = tf.app.flags.FLAGS
 
-FLAGS.log_dir = './lcquad2logs'
+FLAGS.log_dir = './lcquad2logs4'
+
 
 class EntityLinker(object):
   def __init__(self, forward_only):
@@ -30,9 +31,10 @@ class EntityLinker(object):
     with self.graph.as_default():
       config = tf.ConfigProto()
       config.gpu_options.allow_growth = True
-      self.sess = tf.Session(config=config)
+      config.operation_timeout_in_ms=6000
+      self.sess = tf.Session(config=config) 
     self.build_model()
-    
+ 
 
   def build_model(self):
     with self.graph.as_default():
@@ -51,15 +53,12 @@ class EntityLinker(object):
       if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Load model parameters from %s" % ckpt.model_checkpoint_path)
         self.model.saver.restore(self.sess, ckpt.model_checkpoint_path)
+      self.sess.graph.finalize()
 
 
-  def eval(self):
-    """ Randomly get a batch of data and output predictions """  
-    print(self.test_inputs)
+  def eval(self, ):
+    """ Randomly get a batch of data and output predictions """ 
     predicted_ids = self.model.step(self.sess, self.test_inputs, self.test_enc_input_weights, update=False)
-      #print(predicted_ids, predicted_ids.shape) 
-      #print(gtbatch, len(gtbatch))
-      #print(len(self.test_inputs))
     return predicted_ids 
 
   def run(self):
@@ -114,6 +113,7 @@ class EntityLinker(object):
       idtoentity = {}
       predents = set()
       gtents = set()
+      #print(len(self.test_inputs))
       for entnum in list(prediction[0]):
         if entnum <= 0:
           continue
@@ -160,27 +160,27 @@ def main(_):
   with open('./earl2datasets/pctestlcquad2.txt') as rfp:
     for line in rfp:
       line = line.strip()
-      linecount += 1
       d = json.loads(line)
+      if len(d) > 1000:
+        continue
+      linecount += 1
 #      #print(len(d))
       batchd.append(d)
       if linecount % FLAGS.batch_size == 0:
         print("process batch")
         print(linecount)
-        if linecount in [23,60]:
-          batchd = []
-          continue
         try:
           entitylinker.getvector(batchd)
+          predicted = entitylinker.run()
+          _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,tp,fp,fn)
+          batchd = []
         except Exception as e:
           print(e)
+          batchd = []
           continue
-        predicted = entitylinker.run()
-        _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,tp,fp,fn)
         tp = _tp
         fp = _fp
         fn = _fn
-        batchd = []
     
 
 if __name__ == "__main__":

@@ -6,11 +6,11 @@ import os
 import sys
 import json
 
-tf.app.flags.DEFINE_integer("batch_size", 50,"Batch size.")
+tf.app.flags.DEFINE_integer("batch_size", 20,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 1000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
-tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
+tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_string("test_data_path", "./earl2datasets/pctestlcquad2.txt"
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 5, "frequence to do per checkpoint.")
 
 FLAGS = tf.app.flags.FLAGS
-FLAGS.log_dir = "./lcquad2logs"
+FLAGS.log_dir = "./lcquad2logs4"
 
 class EntityLinker(object):
   def __init__(self, forward_only):
@@ -82,10 +82,10 @@ class EntityLinker(object):
     self.test_enc_input_weights = np.stack(enc_input_weights)
     self.test_outputs = np.stack(outputs)
     self.test_dec_input_weights = np.stack(dec_input_weights)
-    print("Load test inputs:            " +str(self.test_inputs.shape))
-    print("Load test enc_input_weights: " +str(self.test_enc_input_weights.shape))
-    print("Load test outputs:           " +str(self.test_outputs.shape))
-    print("Load test dec_input_weights: " +str(self.test_dec_input_weights.shape))
+#    print("Load test inputs:            " +str(self.test_inputs.shape))
+#    print("Load test enc_input_weights: " +str(self.test_enc_input_weights.shape))
+#    print("Load test outputs:           " +str(self.test_outputs.shape))
+#    print("Load test dec_input_weights: " +str(self.test_dec_input_weights.shape))
 
 
   def read_data(self, step):
@@ -138,10 +138,10 @@ class EntityLinker(object):
     self.enc_input_weights = np.stack(enc_input_weights)
     self.outputs = np.stack(outputs)
     self.dec_input_weights = np.stack(dec_input_weights)
-    print("Load inputs:            " +str(self.inputs.shape))
-    print("Load enc_input_weights: " +str(self.enc_input_weights.shape))
-    print("Load outputs:           " +str(self.outputs.shape))
-    print("Load dec_input_weights: " +str(self.dec_input_weights.shape))
+#    print("Load inputs:            " +str(self.inputs.shape))
+#    print("Load enc_input_weights: " +str(self.enc_input_weights.shape))
+#    print("Load outputs:           " +str(self.outputs.shape))
+#    print("Load dec_input_weights: " +str(self.dec_input_weights.shape))
 
 
   def get_batch(self, step):
@@ -183,7 +183,7 @@ class EntityLinker(object):
       inputs,enc_input_weights, outputs, dec_input_weights = \
                   self.get_batch(current_step)
       summary, step_loss, predicted_ids_with_logits, targets, debug_var = \
-                  self.model.step(self.sess, inputs, enc_input_weights, outputs, dec_input_weights, update=True)
+              self.model.step(self.sess, inputs, enc_input_weights, outputs, dec_input_weights, update=True)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       loss += step_loss / FLAGS.steps_per_checkpoint
       current_step += 1
@@ -207,8 +207,7 @@ class EntityLinker(object):
         print("Target : "+str(test_targets[sample]))
         print("="*20)  
         checkpoint_path = os.path.join(FLAGS.log_dir, "convex_hull.ckpt")
-        if test_step_loss < besttestloss:
-          besttestloss = test_step_loss
+        if current_step % FLAGS.steps_per_checkpoint*10 == 0:
           self.model.saver.save(self.sess, checkpoint_path, global_step=self.model.global_step)
         #self.eval()
         step_time, loss = 0.0, 0.0
