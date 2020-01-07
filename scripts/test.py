@@ -7,7 +7,7 @@ from nltk.util import ngrams
 
 es = Elasticsearch()
 tf.app.flags.DEFINE_integer("batch_size", 1,"Batch size.")
-tf.app.flags.DEFINE_integer("max_input_sequence_len", 1000, "Maximum input sequence length.")
+tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
 tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
@@ -165,7 +165,7 @@ def main(_):
     for line in rfp:
       line = line.strip()
       d = json.loads(line)
-      if len(d) > 1000:
+      if len(d) > 3000:
         continue
       linecount += 1
 #      #print(len(d))

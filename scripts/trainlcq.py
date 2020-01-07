@@ -5,6 +5,7 @@ import time
 import os
 import sys
 import json
+import glob
 
 tf.app.flags.DEFINE_integer("batch_size", 30,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
@@ -16,25 +17,25 @@ tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Maximum gradient norm.")
 tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
-tf.app.flags.DEFINE_string("models_dir", "./log", "Log directory")
-tf.app.flags.DEFINE_string("data_path", "./earl2datasets/pctrainlcquad2.txt", "Training Data path.")
-tf.app.flags.DEFINE_string("test_data_path", "./earl2datasets/pctestlcquad2.txt", "Test Data path.")
+tf.app.flags.DEFINE_string("models_dir", "../lcquadlogs5", "Log directory")
+tf.app.flags.DEFINE_string("data_path", "../earl2datasets/lcquadtrainchunks/", "Training Data path.")
+tf.app.flags.DEFINE_string("test_data_path", "../earl2datasets/pctestlcquad2.txt", "Test Data path.")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 5, "frequence to do per checkpoint.")
 
 FLAGS = tf.app.flags.FLAGS
-#FLAGS.log_dir = "./lcquad2logs4"
 
 class EntityLinker(object):
-  def __init__(self, forward_only):
+  def __init__(self, forward_only,trainfiles):
     self.forward_only = forward_only
+    self.epoch = 0
     self.graph = tf.Graph()
+    self.trainfiles = trainfiles
     with self.graph.as_default():
       config = tf.ConfigProto()
       config.gpu_options.allow_growth=True
       self.sess = tf.Session(config=config)
     self.read_test_data()
     self.build_model()
-    self.epoch = 0
     
 
   def read_test_data(self): 
@@ -78,7 +79,6 @@ class EntityLinker(object):
         dec_input_weights.append(weight)
         if len(inputs) == FLAGS.batch_size:
           break
-
     self.test_inputs = np.stack(inputs)
     self.test_enc_input_weights = np.stack(enc_input_weights)
     self.test_outputs = np.stack(outputs)
@@ -96,11 +96,10 @@ class EntityLinker(object):
     dec_input_weights = []
     maxlen = 0
     linecount = 0
-    with open(FLAGS.data_path,'r') as fp:
+    with open(self.trainfiles[step],'r') as fp:
+      print(step,self.trainfiles[step])
       for line in fp:
         linecount += 1
-        if linecount < step*FLAGS.batch_size:
-          continue
         line = line.strip()
         question = json.loads(line)
         questioninputs = []
@@ -119,7 +118,6 @@ class EntityLinker(object):
         weight[:enc_input_len]=1
         enc_input_weights.append(weight)
         inputs.append(questioninputs)
-   
         output=[pointer_net.START_ID]
         for i in questionoutputs:
         # Add 2 to value due to the sepcial tokens
@@ -132,18 +130,13 @@ class EntityLinker(object):
         weight = np.zeros(FLAGS.max_output_sequence_len)
         weight[:dec_input_len]=1
         dec_input_weights.append(weight)
-        if len(inputs) >= FLAGS.batch_size:
-          break
-    if len(inputs) == 0:
-      self.inputs = []
-      self.enc_input_weights = []
-      self.outputs = []
-      self.dec_input_weights = []
-    else:
-      self.inputs = np.stack(inputs)
-      self.enc_input_weights = np.stack(enc_input_weights)
-      self.outputs = np.stack(outputs)
-      self.dec_input_weights = np.stack(dec_input_weights)
+    if len(inputs) < FLAGS.batch_size:
+      return False
+
+    self.inputs = np.stack(inputs)
+    self.enc_input_weights = np.stack(enc_input_weights)
+    self.outputs = np.stack(outputs)
+    self.dec_input_weights = np.stack(dec_input_weights)
 #    print("Load inputs:            " +str(self.inputs.shape))
 #    print("Load enc_input_weights: " +str(self.enc_input_weights.shape))
 #    print("Load outputs:           " +str(self.outputs.shape))
@@ -172,9 +165,14 @@ class EntityLinker(object):
                     learning_rate=FLAGS.learning_rate, 
                     max_gradient_norm=FLAGS.max_gradient_norm, 
                     forward_only=self.forward_only)
+      self.sess.run(tf.global_variables_initializer())
+      ckpt = tf.train.get_checkpoint_state(FLAGS.models_dir)
+      print(ckpt, FLAGS.models_dir)
+      if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+        print("Load model parameters from %s" % ckpt.model_checkpoint_path)
+        self.model.saver.restore(self.sess, ckpt.model_checkpoint_path)
       self.writer = tf.summary.FileWriter(FLAGS.models_dir + '/train',self.sess.graph)
       print("Created model with fresh parameters.")
-      self.sess.run(tf.global_variables_initializer())
 
 
   def train(self):
@@ -188,11 +186,15 @@ class EntityLinker(object):
       start_time = time.time()
       inputs,enc_input_weights, outputs, dec_input_weights = \
                   self.get_batch(current_step)
-      if len(inputs) < FLAGS.batch_size:
-        current_step = 0
-        inputs,enc_input_weights, outputs, dec_input_weights = \
-                  self.get_batch(current_step)
-        self.epoch += 1
+      if inputs.shape[0] < FLAGS.batch_size:
+        print("less than batch size")
+        if current_step >= len(self.trainfiles)-1:
+          current_step = 0
+          self.epoch += 1
+          continue
+        else:
+          current_step += 1
+          continue
       summary, step_loss, predicted_ids_with_logits, targets, debug_var = \
               self.model.step(self.sess, inputs, enc_input_weights, outputs, dec_input_weights, update=True)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
@@ -227,7 +229,8 @@ class EntityLinker(object):
     self.train()
 
 def main(_):
-  entitylinker = EntityLinker(FLAGS.forward_only)
+  trainfiles = glob.glob(FLAGS.data_path+'/*')
+  entitylinker = EntityLinker(FLAGS.forward_only,trainfiles)
   entitylinker.run()
 
 if __name__ == "__main__":
