@@ -6,7 +6,6 @@ from elasticsearch import Elasticsearch
 from nltk.util import ngrams
 
 es = Elasticsearch()
-tf.app.flags.DEFINE_integer("batch_size", 1,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
@@ -39,7 +38,7 @@ class EntityLinker(object):
 
   def build_model(self):
     with self.graph.as_default():
-      self.model = pointer_net.PointerNet(batch_size=FLAGS.batch_size, 
+      self.model = pointer_net.PointerNet(batch_size=1, 
                     max_input_sequence_len=FLAGS.max_input_sequence_len, 
                     max_output_sequence_len=FLAGS.max_output_sequence_len, 
                     rnn_size=FLAGS.rnn_size, 
@@ -68,61 +67,45 @@ class EntityLinker(object):
 
   def getvector(self,d):
     inputs = []
+    self.outputs = []
     enc_input_weights = []
     dec_input_weights = []
     maxlen = 0
     self.outputs = []
     for question in d:
       questioninputs = []
-      questionoutputs = []
-      for idx,word in enumerate(question):
-        #print(len(word[0]), word[1], word[2])
-        questioninputs.append(word[0])
-        if word[2] == 1.0:
-          questionoutputs.append(idx+1)
-      enc_input_len = len(question)
+      enc_input_len = len(question[2])
       print(enc_input_len)
-      if enc_input_len > 1000:
+      if enc_input_len > FLAGS.max_input_sequence_len:
+        print("Length too long, skip")
         continue
-      #print(enc_input_len)
-      #if len(questionoutputs) == 0:
-      #    continue
-      #inputs.append(questioninputs)
+      for idx,word in enumerate(question[2]):
+        questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
         questioninputs.append([0]*802)
-      output=[]
-      for i in questionoutputs:
-        output.append(int(i))
-      self.outputs.append(output)
-      weight = np.zeros(FLAGS.max_input_sequence_len)
-      weight[:enc_input_len]=1
-      enc_input_weights.append(weight)
-      inputs.append(questioninputs)
-  
+    self.outputs.append(question[1])
+    weight = np.zeros(FLAGS.max_input_sequence_len)
+    weight[:enc_input_len]=1
+    enc_input_weights.append(weight)
+    inputs.append(questioninputs)
     self.test_inputs = np.stack(inputs)
     self.test_enc_input_weights = np.stack(enc_input_weights)
-    #np.save('gt.npy',self.outputs)
-    #np.save('test_inputs.npy',self.test_inputs)
-    #np.save('test_enc_input_weights.npy',self.test_enc_input_weights)
-        
-    print("Load test inputs:            " +str(self.test_inputs.shape))
-    print("Load test enc_input_weights: " +str(self.test_enc_input_weights.shape))
 
 
   def calculatef1(self, batchd, predictions, tp,fp,fn):
     for inputquestion,prediction,groundtruth in zip(batchd, predictions, self.outputs):
       idtoentity = {}
       predents = set()
-      gtents = set()
+      gtents = groundtruth
       #print(len(self.test_inputs))
       for entnum in list(prediction[0]):
         if entnum <= 0:
           continue
-        predents.add(inputquestion[entnum-1][1])
-      for entnum in groundtruth:
-        if entnum <= 0:
-          continue
-        gtents.add(inputquestion[entnum-1][1])
+        predents.add(inputquestion[2][entnum-1][1])
+#      for entnum in groundtruth:
+#        if entnum <= 0:
+#          continue
+#        gtents.add(inputquestion[entnum-1][1])
       print(gtents,predents)
       for goldentity in gtents:
         #totalentchunks += 1
@@ -165,26 +148,26 @@ def main(_):
     for line in rfp:
       line = line.strip()
       d = json.loads(line)
-      if len(d) > 3000:
-        continue
       linecount += 1
+      if len(d) > FLAGS.max_input_sequence_len:
+        print("Skip question, too long")
+        continue
 #      #print(len(d))
+      print(d[0],d[1])
       batchd.append(d)
-      if linecount % FLAGS.batch_size == 0:
-        print("process batch")
-        print(linecount)
-        try:
-          entitylinker.getvector(batchd)
-          predicted = entitylinker.run()
-          _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,tp,fp,fn)
-          batchd = []
-        except Exception as e:
-          print(e)
-          batchd = []
-          continue
-        tp = _tp
-        fp = _fp
-        fn = _fn
+      print(linecount)
+      try:
+        entitylinker.getvector(batchd)
+        predicted = entitylinker.run()
+        _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,tp,fp,fn)
+        batchd = []
+      except Exception as e:
+        print(e)
+        batchd = []
+        continue
+      tp = _tp
+      fp = _fp
+      fn = _fn
     
 
 if __name__ == "__main__":
