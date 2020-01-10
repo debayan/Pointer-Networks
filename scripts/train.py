@@ -51,12 +51,14 @@ class EntityLinker(object):
         question = json.loads(line)
         questioninputs = []
         questionoutputs = []
-        for idx,word in enumerate(question):
+        if len(question[1]) == 0:
+          continue
+        for idx,word in enumerate(question[2]):
           questioninputs.append(word[0])
           if word[2] == 1.0:
             questionoutputs.append(idx+1)
       #inputs.append(questioninputs)
-        enc_input_len = len(question)
+        enc_input_len = len(question[2])
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
         for i in range(FLAGS.max_input_sequence_len-enc_input_len):
@@ -105,12 +107,12 @@ class EntityLinker(object):
         question = json.loads(line)
         questioninputs = []
         questionoutputs = []
-        for idx,word in enumerate(question):
+        for idx,word in enumerate(question[2]):
           questioninputs.append(word[0])
           if word[2] == 1.0:
             questionoutputs.append(idx+1)
       #inputs.append(questioninputs)
-        enc_input_len = len(question) 
+        enc_input_len = len(question[2]) 
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
         for i in range(FLAGS.max_input_sequence_len-enc_input_len):
@@ -187,18 +189,17 @@ class EntityLinker(object):
       start_time = time.time()
       inputs,enc_input_weights, outputs, dec_input_weights = \
                   self.get_batch(current_step)
+      if current_step >= len(self.trainfiles)-1:
+        current_step = 0
+        self.epoch += 1
+        if self.epoch > FLAGS.epoch_limit:
+          print("%d epochs done, quit"%FLAGS.epoch_limit)
+          sys.exit(1)
+        continue
       if inputs.shape[0] < FLAGS.batch_size:
         print("less than batch size")
-        if current_step >= len(self.trainfiles)-1:
-          current_step = 0
-          self.epoch += 1
-          if self.epoch > FLAGS.epoch_limit:
-            print("%d epochs done, quit"%FLAGS.epoch_limit)
-            sys.exit(1)
-          continue
-        else:
-          current_step += 1
-          continue
+        current_step += 1
+        continue
       summary, step_loss, predicted_ids_with_logits, targets, debug_var = \
               self.model.step(self.sess, inputs, enc_input_weights, outputs, dec_input_weights, update=True)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
