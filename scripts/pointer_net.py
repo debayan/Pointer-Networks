@@ -1,7 +1,8 @@
 import tensorflow as tf
+import sys
 
 START_ID=0
-PAD_ID=1
+PAD_ID = 1
 END_ID=2
 
 class PointerWrapper(tf.contrib.seq2seq.AttentionWrapper):
@@ -65,7 +66,7 @@ class PointerNet(object):
     self.max_output_sequence_len = max_output_sequence_len
     self.forward_only = forward_only
     self.init_learning_rate = learning_rate
-    # Note we have three special tokens namely 'START', 'PAD' and 'END'
+    # Note we have three special tokens namely 'START', 'END'
     # Here the size of vocab need be added by 3
     self.vocab_size = max_input_sequence_len+3
     # Global step
@@ -159,7 +160,7 @@ class PointerNet(object):
                                           tf.tile([shifted_START_ID],[self.batch_size]), shifted_END_ID, 
                                           dec_cell.zero_state(self.batch_size*beam_width,tf.float32), beam_width)
       # Decode
-      outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(decoder)
+      outputs, a, b = tf.contrib.seq2seq.dynamic_decode(decoder)
       # predicted_ids
       # Shape: [batch_size, max_output_sequence_len,  beam_width]
       predicted_ids = outputs.predicted_ids
@@ -177,6 +178,7 @@ class PointerNet(object):
       outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(decoder,impute_finished=True)
       # logits
       logits = outputs.rnn_output
+      self.rnn_output = outputs.rnn_output
       # predicted_ids_with_logits
       self.predicted_ids_with_logits=tf.nn.top_k(logits)
       # Pad logits to the same shape as targets
@@ -249,7 +251,7 @@ class PointerNet(object):
     if self.forward_only and not update:
       output_feed = [self.predicted_ids]
     if not self.forward_only and update:
-      output_feed = [self.update, self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var]
+      output_feed = [self.update, self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var, self.rnn_output]
     if not update and not self.forward_only:
       output_feed = [self.summary_op, self.loss, self.predicted_ids_with_logits, self.shifted_targets, self.debug_var]
 
@@ -257,7 +259,7 @@ class PointerNet(object):
     outputs = session.run(output_feed, input_feed)
 
     if  update and not self.forward_only:
-      return outputs[1],outputs[2],outputs[3],outputs[4],outputs[5]
+      return outputs[1],outputs[2],outputs[3],outputs[4],outputs[5],outputs[6]
     if self.forward_only and not update:
       return outputs[0]
     if not update and not self.forward_only:
