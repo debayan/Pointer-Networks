@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-import pointer_net 
+import pointer_net
 import time
 import os
 import sys
@@ -11,7 +11,7 @@ tf.app.flags.DEFINE_integer("batch_size", 30,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
-tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
+tf.app.flags.DEFINE_integer("attention_size", 3000, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -20,7 +20,7 @@ tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
 tf.app.flags.DEFINE_string("models_dir", "", "Log directory")
 tf.app.flags.DEFINE_string("data_path", "", "Training Data path.")
 tf.app.flags.DEFINE_string("test_data_path", "", "Test Data path.")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 5, "frequence to do per checkpoint.")
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50, "frequence to do per checkpoint.")
 tf.app.flags.DEFINE_integer("epoch_limit", 3, "stop after these many epochs")
 
 FLAGS = tf.app.flags.FLAGS
@@ -29,14 +29,23 @@ class EntityLinker(object):
   def __init__(self, forward_only,trainfiles):
     self.forward_only = forward_only
     self.epoch = 0
+    self.bestf1 = 0
     self.graph = tf.Graph()
+    self.testgraph = tf.Graph()
     self.trainfiles = trainfiles
     with self.graph.as_default():
       config = tf.ConfigProto()
       config.gpu_options.allow_growth=True
       self.sess = tf.Session(config=config)
+    with self.testgraph.as_default():
+      config = tf.ConfigProto()
+      config.gpu_options.allow_growth = True
+      config.operation_timeout_in_ms=6000
+      self.testsess = tf.Session(config=config)
+    #self.read_test_data()
     self.build_model()
     
+
 
   def read_data(self, step):
     inputs = []
@@ -57,7 +66,6 @@ class EntityLinker(object):
           questioninputs.append(word[0])
           if word[2] == 1.0:
             questionoutputs.append(idx+1)
-      #inputs.append(questioninputs)
         enc_input_len = len(question[2]) 
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
@@ -102,6 +110,17 @@ class EntityLinker(object):
       self.test_outputs, self.test_dec_input_weights
 
   def build_model(self):
+    with self.testgraph.as_default():
+      self.testmodel = pointer_net.PointerNet(batch_size=1,
+                    max_input_sequence_len=FLAGS.max_input_sequence_len,
+                    max_output_sequence_len=FLAGS.max_output_sequence_len,
+                    rnn_size=FLAGS.rnn_size,
+                    attention_size=FLAGS.attention_size,
+                    num_layers=FLAGS.num_layers,
+                    beam_width=FLAGS.beam_width,
+                    learning_rate=FLAGS.learning_rate,
+                    max_gradient_norm=FLAGS.max_gradient_norm,
+                    forward_only=True)
     with self.graph.as_default():
       # Build model
       self.model = pointer_net.PointerNet(batch_size=FLAGS.batch_size, 
@@ -121,7 +140,7 @@ class EntityLinker(object):
         print("Load model parameters from %s" % ckpt.model_checkpoint_path)
         self.model.saver.restore(self.sess, ckpt.model_checkpoint_path)
       self.writer = tf.summary.FileWriter(FLAGS.models_dir + '/train',self.sess.graph)
-      print("Created model with fresh parameters.")
+    print("Created model with fresh parameters.")
 
 
   def train(self):
@@ -151,7 +170,7 @@ class EntityLinker(object):
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       loss += step_loss / FLAGS.steps_per_checkpoint
       current_step += 1
-
+  
       #Time to print statistic and save model
       if current_step % FLAGS.steps_per_checkpoint == 0:
         #test_inputs,test_enc_input_weights, test_outputs, test_dec_input_weights = \
@@ -166,20 +185,127 @@ class EntityLinker(object):
         self.writer.add_summary(summary, gstep)
         #Randomly choose one to check
         #sample = np.random.choice(FLAGS.batch_size,1)[0]
-        for i in range(FLAGS.batch_size):
-            print("="*20)
-            print("Predict: "+str(np.array(predicted_ids_with_logits[1][i]).reshape(-1)))
-            print("Target : "+str(targets[i]))
-            print("="*20)  
-            print ("global step %d step-time %.2f loss %.2f epoch %d" % (gstep, step_time, loss, self.epoch))
+#        for i in range(FLAGS.batch_size):
+#            print("="*20)
+#            print("Predict: "+str(np.array(predicted_ids_with_logits[1][i]).reshape(-1)))
+#            print("Target : "+str(targets[i]))
+#            print("="*20)  
+#            print ("global step %d step-time %.2f loss %.2f epoch %d" % (gstep, step_time, loss, self.epoch))
         checkpoint_path = os.path.join(FLAGS.models_dir, "convex_hull.ckpt")
-        if current_step % FLAGS.steps_per_checkpoint*10 == 0:
+        if current_step % FLAGS.steps_per_checkpoint == 0: 
           self.model.saver.save(self.sess, checkpoint_path, global_step=self.model.global_step)
-        #self.eval()
-        step_time, loss = 0.0, 0.0
+          self.testall()
+          #self.eval()
+          step_time, loss = 0.0, 0.0
 
   def run(self):
     self.train()
+
+  def getvector(self,d):
+    inputs = []
+    enc_input_weights = []
+    dec_input_weights = []
+    maxlen = 0
+    self.testoutputs = []
+    for question in d:
+      questioninputs = []
+      enc_input_len = len(question[2])
+      #print(enc_input_len)
+      if enc_input_len > FLAGS.max_input_sequence_len:
+        print("Length too long, skip")
+        continue
+      for idx,word in enumerate(question[2]):
+        questioninputs.append(word[0])
+      for i in range(FLAGS.max_input_sequence_len-enc_input_len):
+        questioninputs.append([0]*802)
+    self.testoutputs.append(question[1])
+    weight = np.zeros(FLAGS.max_input_sequence_len)
+    weight[:enc_input_len]=1
+    enc_input_weights.append(weight)
+    inputs.append(questioninputs)
+    self.test_inputs = np.stack(inputs)
+    self.test_enc_input_weights = np.stack(enc_input_weights)
+
+  def calculatef1(self, batchd, predictions, tp,fp,fn):
+    for inputquestion,prediction,groundtruth in zip(batchd, predictions, self.testoutputs):
+      idtoentity = {}
+      predents = set()
+      gtents = groundtruth
+      #print(len(self.test_inputs))
+      for entnum in list(prediction[0]):
+        if entnum <= 0:
+          continue
+        predents.add(inputquestion[2][entnum-1][1])
+      #print(gtents,predents)
+      for goldentity in gtents:
+        #totalentchunks += 1
+        if goldentity in predents:
+          tp += 1
+        else:
+          fn += 1
+      for queryentity in predents:
+        if queryentity not in gtents:
+          fp += 1
+    try:
+      precisionentity = tp/float(tp+fp)
+      recallentity = tp/float(tp+fn)
+      f1entity = 2*(precisionentity*recallentity)/(precisionentity+recallentity)
+      #print("precision entity = ",precisionentity)
+      #print("recall entity = ",recallentity)
+      #print("f1 entity = ",f1entity)
+    except Exception as e:
+      #print(e)
+      pass
+    return tp,fp,fn
+    #print(tp,fp,fn)
+
+  def testall(self):
+    print("Test set evaluation running ...")
+    ckpt = tf.train.get_checkpoint_state(FLAGS.models_dir)
+    print(ckpt, FLAGS.models_dir)
+    if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+      print("Load model parameters from %s" % ckpt.model_checkpoint_path)
+      self.testmodel.saver.restore(self.testsess, ckpt.model_checkpoint_path)
+    tp = 0
+    fp = 0
+    fn = 0
+    linecount = 0
+    batchd = []
+    with open(FLAGS.test_data_path) as rfp:
+      for line in rfp:
+        line = line.strip()
+        d = json.loads(line)
+        linecount += 1
+        if len(d) > FLAGS.max_input_sequence_len:
+          print("Skip question, too long")
+          continue
+  #      #print(len(d))
+        batchd.append(d)
+        #print(linecount)
+        try:
+          self.getvector(batchd)
+          predicted = self.testmodel.step(self.testsess, self.test_inputs, self.test_enc_input_weights, update=False)
+          _tp,_fp,_fn = self.calculatef1(batchd,predicted,tp,fp,fn)
+          batchd = []
+        except Exception as e:
+          #print(e)
+          batchd = []
+          continue
+        tp = _tp
+        fp = _fp
+        fn = _fn
+        if linecount > 500:
+          break
+    precisionentity = tp/float(tp+fp+0.001)
+    recallentity = tp/float(tp+fn+0.001)
+    f1entity = 2*(precisionentity*recallentity)/(precisionentity+recallentity)
+    print("precision  %f  recall %f  f1 %f  globalstep %d  epoch %d"%(precisionentity, recallentity, f1entity, self.model.global_step.eval(session=self.sess), self.epoch))
+    if f1entity > self.bestf1:
+      self.bestf1 = f1entity
+      print("Best f1 so far, saving ...")
+      checkpoint_path = os.path.join(FLAGS.models_dir+'/solid/', "%f_%d_%d_convex_hull.ckpt"%(f1entity,self.model.global_step.eval(session=self.sess),self.epoch))
+      self.model.saver.save(self.sess, checkpoint_path, global_step=self.model.global_step.eval(session=self.sess))
+      #save model now 
 
 def main(_):
   trainfiles = glob.glob(FLAGS.data_path+'/*')
