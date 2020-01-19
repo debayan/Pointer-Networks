@@ -3,6 +3,7 @@ import numpy as np
 import pointer_net
 import time
 import os
+import random
 import sys
 import json
 import glob
@@ -10,8 +11,8 @@ import glob
 tf.app.flags.DEFINE_integer("batch_size", 30,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
-tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
-tf.app.flags.DEFINE_integer("attention_size", 3000, "Attention size.")
+tf.app.flags.DEFINE_integer("rnn_size", 512, "RNN unit size.")
+tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -20,8 +21,8 @@ tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
 tf.app.flags.DEFINE_string("models_dir", "", "Log directory")
 tf.app.flags.DEFINE_string("data_path", "", "Training Data path.")
 tf.app.flags.DEFINE_string("test_data_path", "", "Test Data path.")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50, "frequence to do per checkpoint.")
-tf.app.flags.DEFINE_integer("epoch_limit", 3, "stop after these many epochs")
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 20, "frequence to do per checkpoint.")
+tf.app.flags.DEFINE_integer("epoch_limit", 5, "stop after these many epochs")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -43,8 +44,14 @@ class EntityLinker(object):
       config.operation_timeout_in_ms=6000
       self.testsess = tf.Session(config=config)
     #self.read_test_data()
+    testlinecount = 0
     self.build_model()
-    
+    with open(FLAGS.test_data_path) as rfp:
+      for line in rfp:
+        testlinecount += 1
+    print(testlinecount, " lines in test file")
+    self.randomtestlinenumbers = random.sample(range(1,testlinecount-1),100)
+    print("Will test the following line numbers: ",self.randomtestlinenumbers)
 
 
   def read_data(self, step):
@@ -54,8 +61,9 @@ class EntityLinker(object):
     dec_input_weights = []
     maxlen = 0
     linecount = 0
-    with open(self.trainfiles[step],'r') as fp:
-      print(step,self.trainfiles[step])
+    x = random.randint(0,len(self.trainfiles)-1) 
+    with open(self.trainfiles[x],'r') as fp:
+      print(step,self.trainfiles[x])
       for line in fp:
         linecount += 1
         line = line.strip()
@@ -70,7 +78,7 @@ class EntityLinker(object):
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
         for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-          questioninputs.append([0]*802)
+          questioninputs.append([0]*803)
         weight = np.zeros(FLAGS.max_input_sequence_len)
         weight[:enc_input_len]=1
         enc_input_weights.append(weight)
@@ -139,8 +147,9 @@ class EntityLinker(object):
       if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Load model parameters from %s" % ckpt.model_checkpoint_path)
         self.model.saver.restore(self.sess, ckpt.model_checkpoint_path)
+      else:
+        print("Created model with fresh parameters.")
       self.writer = tf.summary.FileWriter(FLAGS.models_dir + '/train',self.sess.graph)
-    print("Created model with fresh parameters.")
 
 
   def train(self):
@@ -150,6 +159,7 @@ class EntityLinker(object):
     current_step = 0
     test_step_loss = 0.0
     besttestloss = 99999
+    gstep = None
     while True:
       start_time = time.time()
       inputs,enc_input_weights, outputs, dec_input_weights = \
@@ -168,35 +178,21 @@ class EntityLinker(object):
       summary, step_loss, predicted_ids_with_logits, targets, debug_var, rnn_output = \
               self.model.step(self.sess, inputs, enc_input_weights, outputs, dec_input_weights, update=True)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-      loss += step_loss / FLAGS.steps_per_checkpoint
       current_step += 1
+      loss += step_loss# / FLAGS.steps_per_checkpoint
+      with self.sess.as_default():
+        gstep = self.model.global_step.eval()
   
       #Time to print statistic and save model
-      if current_step % FLAGS.steps_per_checkpoint == 0:
-        #test_inputs,test_enc_input_weights, test_outputs, test_dec_input_weights = \
-        #          self.get_test_batch()
-        #test_summary, test_step_loss, test_predicted_ids_with_logits, test_targets, test_debug_var = \
-        #          self.model.step(self.sess, test_inputs, test_enc_input_weights, test_outputs, test_dec_input_weights, update=False)
-        with self.sess.as_default():
-          gstep = self.model.global_step.eval()
-        #print ("global step %d current step %d epoch %d step-time %.2f loss %.2f valloss %.2f" % (gstep, current_step, self.epoch, step_time, loss, test_step_loss))
+      if  gstep % FLAGS.steps_per_checkpoint == 0:
+        loss /= float(FLAGS.steps_per_checkpoint)
         print ("global step %d step-time %.2f loss %.2f epoch %d" % (gstep, step_time, loss, self.epoch))
         #Write summary
         self.writer.add_summary(summary, gstep)
-        #Randomly choose one to check
-        #sample = np.random.choice(FLAGS.batch_size,1)[0]
-#        for i in range(FLAGS.batch_size):
-#            print("="*20)
-#            print("Predict: "+str(np.array(predicted_ids_with_logits[1][i]).reshape(-1)))
-#            print("Target : "+str(targets[i]))
-#            print("="*20)  
-#            print ("global step %d step-time %.2f loss %.2f epoch %d" % (gstep, step_time, loss, self.epoch))
         checkpoint_path = os.path.join(FLAGS.models_dir, "convex_hull.ckpt")
-        if current_step % FLAGS.steps_per_checkpoint == 0: 
-          self.model.saver.save(self.sess, checkpoint_path, global_step=self.model.global_step)
-          self.testall()
-          #self.eval()
-          step_time, loss = 0.0, 0.0
+        self.model.saver.save(self.sess, checkpoint_path, global_step=self.model.global_step)
+        self.testall()
+        step_time, loss = 0.0, 0.0
 
   def run(self):
     self.train()
@@ -217,7 +213,7 @@ class EntityLinker(object):
       for idx,word in enumerate(question[2]):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*802)
+        questioninputs.append([0]*803)
     self.testoutputs.append(question[1])
     weight = np.zeros(FLAGS.max_input_sequence_len)
     weight[:enc_input_len]=1
@@ -273,9 +269,11 @@ class EntityLinker(object):
     batchd = []
     with open(FLAGS.test_data_path) as rfp:
       for line in rfp:
+        linecount += 1
+        if linecount not in self.randomtestlinenumbers:
+          continue
         line = line.strip()
         d = json.loads(line)
-        linecount += 1
         if len(d) > FLAGS.max_input_sequence_len:
           print("Skip question, too long")
           continue
@@ -284,7 +282,7 @@ class EntityLinker(object):
         #print(linecount)
         try:
           self.getvector(batchd)
-          predicted = self.testmodel.step(self.testsess, self.test_inputs, self.test_enc_input_weights, update=False)
+          predicted,_ = self.testmodel.step(self.testsess, self.test_inputs, self.test_enc_input_weights, update=False)
           _tp,_fp,_fn = self.calculatef1(batchd,predicted,tp,fp,fn)
           batchd = []
         except Exception as e:
@@ -294,11 +292,9 @@ class EntityLinker(object):
         tp = _tp
         fp = _fp
         fn = _fn
-        if linecount > 500:
-          break
     precisionentity = tp/float(tp+fp+0.001)
     recallentity = tp/float(tp+fn+0.001)
-    f1entity = 2*(precisionentity*recallentity)/(precisionentity+recallentity)
+    f1entity = 2*(precisionentity*recallentity)/(precisionentity+recallentity+0.001)
     print("precision  %f  recall %f  f1 %f  globalstep %d  epoch %d"%(precisionentity, recallentity, f1entity, self.model.global_step.eval(session=self.sess), self.epoch))
     if f1entity > self.bestf1:
       self.bestf1 = f1entity

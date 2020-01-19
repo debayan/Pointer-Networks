@@ -8,9 +8,9 @@ from nltk.util import ngrams
 es = Elasticsearch()
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
-tf.app.flags.DEFINE_integer("rnn_size", 128, "RNN unit size.")
+tf.app.flags.DEFINE_integer("rnn_size", 512, "RNN unit size.")
 tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
-tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_string("test_data", "./a.txt", "Learning rate.")
@@ -31,7 +31,7 @@ class EntityLinker(object):
     with self.graph.as_default():
       config = tf.ConfigProto()
       config.gpu_options.allow_growth = True
-      config.operation_timeout_in_ms=6000
+      config.operation_timeout_in_ms=10000
       self.sess = tf.Session(config=config) 
     self.build_model()
  
@@ -58,8 +58,9 @@ class EntityLinker(object):
 
   def eval(self, ):
     """ Randomly get a batch of data and output predictions """ 
-    predicted_ids = self.model.step(self.sess, self.test_inputs, self.test_enc_input_weights, update=False)
-    return predicted_ids 
+    predicted_ids,outputs = self.model.step(self.sess, self.test_inputs, self.test_enc_input_weights, update=False)
+    print(outputs)
+    return predicted_ids,outputs 
 
   def run(self):
     return self.eval()
@@ -82,7 +83,7 @@ class EntityLinker(object):
       for idx,word in enumerate(question[2]):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*802)
+        questioninputs.append([0]*803)
     self.outputs.append(question[1])
     weight = np.zeros(FLAGS.max_input_sequence_len)
     weight[:enc_input_len]=1
@@ -92,23 +93,34 @@ class EntityLinker(object):
     self.test_enc_input_weights = np.stack(enc_input_weights)
 
 
-  def calculatef1(self, batchd, predictions, tp,fp,fn):
+  def calculatef1(self, batchd, predictions, decoderoutput, tp,fp,fn):
     for inputquestion,prediction,groundtruth in zip(batchd, predictions, self.outputs):
       idtoentity = {}
       predents = set()
       gtents = groundtruth
       #print(len(self.test_inputs))
+      seen = []
       for entnum in list(prediction[0]):
         if entnum <= 0:
           continue
+        wordindex = inputquestion[2][entnum-1][0][801]
+        ngramtype = inputquestion[2][entnum-1][0][802]
+        print(inputquestion[2][entnum-1][0][801], inputquestion[2][entnum-1][0][802],inputquestion[2][entnum-1][0][800], inputquestion[2][entnum-1][1])
+        if wordindex in seen:
+            continue         
         predents.add(inputquestion[2][entnum-1][1])
+        seen.append(wordindex)
 #      for entnum in groundtruth:
 #        if entnum <= 0:
 #          continue
 #        gtents.add(inputquestion[entnum-1][1])
+      print("scores ",decoderoutput[1].scores)
       print(gtents,predents)
       for goldentity in gtents:
         #totalentchunks += 1
+        if not goldentity:
+          print("Skip None")
+          continue
         if goldentity in predents:
           tp += 1
         else:
@@ -153,13 +165,12 @@ def main(_):
         print("Skip question, too long")
         continue
 #      #print(len(d))
-      print(d[0],d[1])
       batchd.append(d)
       print(linecount)
       try:
         entitylinker.getvector(batchd)
-        predicted = entitylinker.run()
-        _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,tp,fp,fn)
+        predicted,decoderoutput = entitylinker.run()
+        _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,decoderoutput,tp,fp,fn)
         batchd = []
       except Exception as e:
         print(e)
