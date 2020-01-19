@@ -18,6 +18,7 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Maximum gradient norm.")
 tf.app.flags.DEFINE_boolean("forward_only", True, "Forward Only.")
 tf.app.flags.DEFINE_string("models_dir", "./log", "Log directory")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "frequence to do per checkpoint.")
+tf.app.flags.DEFINE_integer("batch_size", 10, "batchsize")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -31,14 +32,14 @@ class EntityLinker(object):
     with self.graph.as_default():
       config = tf.ConfigProto()
       config.gpu_options.allow_growth = True
-      config.operation_timeout_in_ms=10000
+      config.operation_timeout_in_ms=6000
       self.sess = tf.Session(config=config) 
     self.build_model()
  
 
   def build_model(self):
     with self.graph.as_default():
-      self.model = pointer_net.PointerNet(batch_size=1, 
+      self.model = pointer_net.PointerNet(batch_size=FLAGS.batch_size, 
                     max_input_sequence_len=FLAGS.max_input_sequence_len, 
                     max_output_sequence_len=FLAGS.max_output_sequence_len, 
                     rnn_size=FLAGS.rnn_size, 
@@ -56,7 +57,7 @@ class EntityLinker(object):
       self.sess.graph.finalize()
 
 
-  def eval(self, ):
+  def eval(self):
     """ Randomly get a batch of data and output predictions """ 
     predicted_ids,outputs = self.model.step(self.sess, self.test_inputs, self.test_enc_input_weights, update=False)
     print(outputs)
@@ -84,11 +85,11 @@ class EntityLinker(object):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
         questioninputs.append([0]*803)
-    self.outputs.append(question[1])
-    weight = np.zeros(FLAGS.max_input_sequence_len)
-    weight[:enc_input_len]=1
-    enc_input_weights.append(weight)
-    inputs.append(questioninputs)
+      self.outputs.append(question[1])
+      weight = np.zeros(FLAGS.max_input_sequence_len)
+      weight[:enc_input_len]=1
+      enc_input_weights.append(weight)
+      inputs.append(questioninputs)
     self.test_inputs = np.stack(inputs)
     self.test_enc_input_weights = np.stack(enc_input_weights)
 
@@ -107,7 +108,10 @@ class EntityLinker(object):
         ngramtype = inputquestion[2][entnum-1][0][802]
         print(inputquestion[2][entnum-1][0][801], inputquestion[2][entnum-1][0][802],inputquestion[2][entnum-1][0][800], inputquestion[2][entnum-1][1])
         if wordindex in seen:
-            continue         
+            continue
+#        if ngramtype == -2 and wordindex-1 in seen:
+#            seen.append(wordindex)
+#            continue
         predents.add(inputquestion[2][entnum-1][1])
         seen.append(wordindex)
 #      for entnum in groundtruth:
@@ -164,21 +168,21 @@ def main(_):
       if len(d) > FLAGS.max_input_sequence_len:
         print("Skip question, too long")
         continue
-#      #print(len(d))
       batchd.append(d)
       print(linecount)
-      try:
-        entitylinker.getvector(batchd)
-        predicted,decoderoutput = entitylinker.run()
-        _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,decoderoutput,tp,fp,fn)
-        batchd = []
-      except Exception as e:
-        print(e)
-        batchd = []
-        continue
-      tp = _tp
-      fp = _fp
-      fn = _fn
+      if len(batchd) == FLAGS.batch_size:
+        try:
+          entitylinker.getvector(batchd)
+          predicted,decoderoutput = entitylinker.run()
+          _tp,_fp,_fn = entitylinker.calculatef1(batchd,predicted,decoderoutput,tp,fp,fn)
+          tp = _tp
+          fp = _fp
+          fn = _fn
+          batchd = []
+        except Exception as e:
+          print(e)
+          batchd = []
+          continue
     
 
 if __name__ == "__main__":
