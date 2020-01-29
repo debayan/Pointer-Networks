@@ -41,7 +41,7 @@ for queryitem,golditem in zip(d,gold):
     queryentities = []
     print(golditem['question'])
     print(set(golditem['entities']))
-    for chunk in queryitem[1]['entities']:
+    for chunk in queryitem[1]['entities_wikidata']:
         queryentities.append(chunk[0][32:-1])
     print(set(queryentities))
     for goldentity in set(golditem['entities']):

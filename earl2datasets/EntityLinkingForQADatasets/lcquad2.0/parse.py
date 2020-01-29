@@ -12,7 +12,7 @@ def hiturl(questionserial):
     try:
         print(question)
         question = re.sub(r"[^a-zA-Z0-9]+", ' ', question)
-        conditionsSetURL = 'https://labs.tib.eu/falcon/falcon2/api?mode=short'
+        conditionsSetURL = 'https://labs.tib.eu/falcon/falcon2/api?mode=long'
         newConditions = {'text': question}
         params = json.dumps(newConditions).encode('utf8')
         req = urllib.request.Request(conditionsSetURL, data=params, headers={'content-type': 'application/json'})
