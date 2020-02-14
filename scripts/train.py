@@ -67,7 +67,11 @@ class EntityLinker(object):
       for line in fp:
         linecount += 1
         line = line.strip()
-        question = json.loads(line)
+        try:
+            question = json.loads(line)
+        except Exception as e:
+            print(e)
+            continue
         questioninputs = []
         questionoutputs = []
         for idx,word in enumerate(question[2]):
@@ -78,7 +82,7 @@ class EntityLinker(object):
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
         for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-          questioninputs.append([0]*803)
+          questioninputs.append([0]*1103)
         weight = np.zeros(FLAGS.max_input_sequence_len)
         weight[:enc_input_len]=1
         enc_input_weights.append(weight)
@@ -213,7 +217,7 @@ class EntityLinker(object):
       for idx,word in enumerate(question[2]):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*803)
+        questioninputs.append([0]*1103)
     self.testoutputs.append(question[1])
     weight = np.zeros(FLAGS.max_input_sequence_len)
     weight[:enc_input_len]=1

@@ -32,7 +32,7 @@ class EntityLinker(object):
     with self.graph.as_default():
       config = tf.ConfigProto()
       config.gpu_options.allow_growth = True
-      config.operation_timeout_in_ms=6000
+      config.operation_timeout_in_ms=12000
       self.sess = tf.Session(config=config) 
     self.build_model()
  
@@ -84,7 +84,7 @@ class EntityLinker(object):
       for idx,word in enumerate(question[2]):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*803)
+        questioninputs.append([0]*1103)
       self.outputs.append(question[1])
       weight = np.zeros(FLAGS.max_input_sequence_len)
       weight[:enc_input_len]=1
@@ -104,9 +104,9 @@ class EntityLinker(object):
       for entnum in list(prediction[0]):
         if entnum <= 0:
           continue
-        wordindex = inputquestion[2][entnum-1][0][801]
-        ngramtype = inputquestion[2][entnum-1][0][802]
-        print(inputquestion[2][entnum-1][0][801], inputquestion[2][entnum-1][0][802],inputquestion[2][entnum-1][0][800], inputquestion[2][entnum-1][1])
+        wordindex = inputquestion[2][entnum-1][0][1101]
+        ngramtype = inputquestion[2][entnum-1][0][1102]
+        print(inputquestion[2][entnum-1][0][1101], inputquestion[2][entnum-1][0][1102],inputquestion[2][entnum-1][0][1100], inputquestion[2][entnum-1][1])
         if wordindex in seen:
             continue
 #        if ngramtype == -2 and wordindex-1 in seen:
