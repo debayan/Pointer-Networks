@@ -22,7 +22,8 @@ tf.app.flags.DEFINE_string("models_dir", "", "Log directory")
 tf.app.flags.DEFINE_string("data_path", "", "Training Data path.")
 tf.app.flags.DEFINE_string("test_data_path", "", "Test Data path.")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 30, "frequence to do per checkpoint.")
-tf.app.flags.DEFINE_integer("epoch_limit", 10, "stop after these many epochs")
+tf.app.flags.DEFINE_integer("epoch_limit", 3, "stop after these many epochs")
+tf.app.flags.DEFINE_integer("slice_length", 1439, "for ablation experiments")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -50,6 +51,7 @@ class EntityLinker(object):
       for line in rfp:
         testlinecount += 1
     print(testlinecount, " lines in test file")
+    random.seed(42)
     self.randomtestlinenumbers = random.sample(range(1,testlinecount-1),100)
     print("Will test the following line numbers: ",self.randomtestlinenumbers)
 
@@ -75,14 +77,14 @@ class EntityLinker(object):
         questioninputs = []
         questionoutputs = []
         for idx,word in enumerate(question[2]):
-          questioninputs.append(word[0])
+          questioninputs.append(word[0][:FLAGS.slice_length])
           if word[2] == 1.0:
             questionoutputs.append(idx+1)
         enc_input_len = len(question[2]) 
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
         for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-          questioninputs.append([0]*1439)
+          questioninputs.append([0]*FLAGS.slice_length)
         weight = np.zeros(FLAGS.max_input_sequence_len)
         weight[:enc_input_len]=1
         enc_input_weights.append(weight)
@@ -132,7 +134,8 @@ class EntityLinker(object):
                     beam_width=FLAGS.beam_width,
                     learning_rate=FLAGS.learning_rate,
                     max_gradient_norm=FLAGS.max_gradient_norm,
-                    forward_only=True)
+                    forward_only=True,
+                    slice_length=FLAGS.slice_length)
     with self.graph.as_default():
       # Build model
       self.model = pointer_net.PointerNet(batch_size=FLAGS.batch_size, 
@@ -144,7 +147,8 @@ class EntityLinker(object):
                     beam_width=FLAGS.beam_width, 
                     learning_rate=FLAGS.learning_rate, 
                     max_gradient_norm=FLAGS.max_gradient_norm, 
-                    forward_only=self.forward_only)
+                    forward_only=self.forward_only,
+                    slice_length=FLAGS.slice_length)
       self.sess.run(tf.global_variables_initializer())
       ckpt = tf.train.get_checkpoint_state(FLAGS.models_dir)
       print(ckpt, FLAGS.models_dir)
@@ -215,9 +219,9 @@ class EntityLinker(object):
         print("Length too long, skip")
         continue
       for idx,word in enumerate(question[2]):
-        questioninputs.append(word[0])
+        questioninputs.append(word[0][:FLAGS.slice_length])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*1439)
+        questioninputs.append([0]*FLAGS.slice_length)
     self.testoutputs.append(question[1])
     weight = np.zeros(FLAGS.max_input_sequence_len)
     weight[:enc_input_len]=1
@@ -236,7 +240,7 @@ class EntityLinker(object):
         if entnum <= 0:
           continue
         predents.add(inputquestion[2][entnum-1][1])
-      print(gtents,predents)
+      #print(gtents,predents)
       for goldentity in gtents:
         #totalentchunks += 1
         if goldentity in predents:
