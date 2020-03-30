@@ -8,11 +8,11 @@ import sys
 import json
 import glob
 
-tf.app.flags.DEFINE_integer("batch_size", 30,"Batch size.")
+tf.app.flags.DEFINE_integer("batch_size", 10,"Batch size.")
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 512, "RNN unit size.")
-tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
+tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -21,8 +21,8 @@ tf.app.flags.DEFINE_boolean("forward_only", False, "Forward Only.")
 tf.app.flags.DEFINE_string("models_dir", "", "Log directory")
 tf.app.flags.DEFINE_string("data_path", "", "Training Data path.")
 tf.app.flags.DEFINE_string("test_data_path", "", "Test Data path.")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 20, "frequence to do per checkpoint.")
-tf.app.flags.DEFINE_integer("epoch_limit", 5, "stop after these many epochs")
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 30, "frequence to do per checkpoint.")
+tf.app.flags.DEFINE_integer("epoch_limit", 10, "stop after these many epochs")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -82,7 +82,7 @@ class EntityLinker(object):
         if enc_input_len > FLAGS.max_input_sequence_len:
           continue
         for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-          questioninputs.append([0]*1103)
+          questioninputs.append([0]*1439)
         weight = np.zeros(FLAGS.max_input_sequence_len)
         weight[:enc_input_len]=1
         enc_input_weights.append(weight)
@@ -188,7 +188,7 @@ class EntityLinker(object):
         gstep = self.model.global_step.eval()
   
       #Time to print statistic and save model
-      if  gstep % FLAGS.steps_per_checkpoint == 0:
+      if gstep % FLAGS.steps_per_checkpoint == 0:
         loss /= float(FLAGS.steps_per_checkpoint)
         print ("global step %d step-time %.2f loss %.2f epoch %d" % (gstep, step_time, loss, self.epoch))
         #Write summary
@@ -217,7 +217,7 @@ class EntityLinker(object):
       for idx,word in enumerate(question[2]):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*1103)
+        questioninputs.append([0]*1439)
     self.testoutputs.append(question[1])
     weight = np.zeros(FLAGS.max_input_sequence_len)
     weight[:enc_input_len]=1
@@ -236,7 +236,7 @@ class EntityLinker(object):
         if entnum <= 0:
           continue
         predents.add(inputquestion[2][entnum-1][1])
-      #print(gtents,predents)
+      print(gtents,predents)
       for goldentity in gtents:
         #totalentchunks += 1
         if goldentity in predents:

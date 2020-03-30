@@ -9,7 +9,7 @@ es = Elasticsearch()
 tf.app.flags.DEFINE_integer("max_input_sequence_len", 3000, "Maximum input sequence length.")
 tf.app.flags.DEFINE_integer("max_output_sequence_len", 100, "Maximum output sequence length.")
 tf.app.flags.DEFINE_integer("rnn_size", 512, "RNN unit size.")
-tf.app.flags.DEFINE_integer("attention_size", 500, "Attention size.")
+tf.app.flags.DEFINE_integer("attention_size", 128, "Attention size.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers.")
 tf.app.flags.DEFINE_integer("beam_width", 1, "Width of beam search .")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -60,11 +60,38 @@ class EntityLinker(object):
   def eval(self):
     """ Randomly get a batch of data and output predictions """ 
     predicted_ids,outputs = self.model.step(self.sess, self.test_inputs, self.test_enc_input_weights, update=False)
-    print(outputs)
+    #print(outputs)
     return predicted_ids,outputs 
 
   def run(self):
     return self.eval()
+
+  def merge(self, entitytuple, entdict):
+      span = entitytuple[1]
+      tempentdict = copy.deepcopy(entdict)
+      for k,v in tempentdict.items():
+          for entchunk in v:
+              entspan = entchunk[1]
+              x = range(span[0],span[1]+1)
+              y = range(entspan[0],entspan[1]+1)
+              if len(set(x).intersection(y)) > 0:
+                  if entitytuple in entdict[k]:
+                      print("Exact already present, skip")
+                      continue
+                  print("Merging ", entitytuple, " into ", entdict)
+                  entdict[k].append((entitytuple))
+
+
+  def overlap(self,span,entdict):
+      for k,v in entdict.items():
+          for entchunk in v:
+              entspan = entchunk[1]
+              x = range(span[0],span[1]+1)
+              y = range(entspan[0],entspan[1]+1)
+              if len(set(x).intersection(y)) > 0:
+                  print("Overlap exists between ",span," and ",entspan)
+                  return True
+      return False
 
 
   def getvector(self,d):
@@ -84,7 +111,7 @@ class EntityLinker(object):
       for idx,word in enumerate(question[2]):
         questioninputs.append(word[0])
       for i in range(FLAGS.max_input_sequence_len-enc_input_len):
-        questioninputs.append([0]*1103)
+        questioninputs.append([0]*1439)
       self.outputs.append(question[1])
       weight = np.zeros(FLAGS.max_input_sequence_len)
       weight[:enc_input_len]=1
@@ -104,25 +131,35 @@ class EntityLinker(object):
       for entnum in list(prediction[0]):
         if entnum <= 0:
           continue
-        wordindex = inputquestion[2][entnum-1][0][1101]
-        ngramtype = inputquestion[2][entnum-1][0][1102]
-        print(inputquestion[2][entnum-1][0][1101], inputquestion[2][entnum-1][0][1102],inputquestion[2][entnum-1][0][1100], inputquestion[2][entnum-1][1])
-        if wordindex in seen:
-            continue
+        #wordindex = inputquestion[2][entnum-1][0][1101]
+        #ngramtype = inputquestion[2][entnum-1][0][1102]
+        #print(inputquestion[2][entnum-1][0][1401], inputquestion[2][entnum-1][0][1402],inputquestion[2][entnum-1][0][1400], inputquestion[2][entnum-1][1])
+        #if wordindex in seen:
+        #    continue
 #        if ngramtype == -2 and wordindex-1 in seen:
 #            seen.append(wordindex)
 #            continue
         predents.add(inputquestion[2][entnum-1][1])
-        seen.append(wordindex)
+       #seen.append(wordindex)
 #      for entnum in groundtruth:
 #        if entnum <= 0:
 #          continue
 #        gtents.add(inputquestion[entnum-1][1])
-      print("scores ",decoderoutput[1].scores)
-      print(gtents,predents)
+      #print("scores ",decoderoutput[1].scores)
+      print(json.dumps({'id':inputquestion[0],'groundtruth':gtents,'predictions':list(predents)}))
+      if len(gtents) == 0 or None in gtents:
+          print("early skip None")
+          continue
+#      if len(gtents) == 0 and len(list(predents)) == 0:
+#          tp += 1
+#          continue
+#      if gtents.count(None) == len(gtents) and len(list(predents)) == 0:
+#          tp += 1
+#          continue
       for goldentity in gtents:
         #totalentchunks += 1
         if not goldentity:
+          print(goldentity,gtents)
           print("Skip None")
           continue
         if goldentity in predents:
